@@ -1,9 +1,12 @@
 package wakatime
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -69,18 +72,18 @@ type StatsItem struct {
 
 // HeartbeatItem contains single hartbeat item
 type HeartbeatItem struct {
-	Entity       string
-	Type         string
-	Time         float32
-	Project      string
-	Branch       string
-	Language     string
-	Dependencies string
-	Lines        int
-	Lineno       int
-	Cursorpos    int
-	IsWrite      bool `json:"is_write"`
-	IsDebugging  bool `json:"is_debugging"`
+	Entity       string  `json:"entity,omitempty"`
+	Type         string  `json:"type,omitempty"`
+	Time         float32 `json:"time,omitempty"`
+	Project      string  `json:"project,omitempty"`
+	Branch       string  `json:"branch,omitempty"`
+	Language     string  `json:"language,omitempty"`
+	Dependencies string  `json:"dependencies,omitempty"`
+	Lines        int     `json:"lines,omitempty"`
+	Lineno       int     `json:"lineno,omitempty"`
+	Cursorpos    int     `json:"cursorpos,omitempty"`
+	IsWrite      bool    `json:"is_write,omitempty"`
+	IsDebugging  bool    `json:"is_debugging,omitempty"`
 }
 
 // Heartbeats contains the Heartbeats report
@@ -352,6 +355,51 @@ func (wt *WakaTime) GetHartbeats(user string, date time.Time) (*Heartbeats, erro
 		return nil, err
 	}
 	return &h, nil
+}
+
+type PostHeartbeatResponse struct {
+	ID     string
+	Entity string
+	Type   string
+	Time   Time
+}
+
+func (wt *WakaTime) PostHeartbeat(user string, heartbeat HeartbeatItem) (*PostHeartbeatResponse, error) {
+	var err error
+	var u *url.URL
+	if u, err = url.Parse(APIBase); err != nil {
+		return nil, err
+	}
+	u.Path += "users/" + user + "/heartbeats"
+
+	b, err := json.Marshal(heartbeat)
+	if err != nil {
+		return nil, err
+	}
+	bytesReader := bytes.NewReader(b)
+
+	resp, err := wt.client.Post(u.String(), "application/json", bytesReader)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	rb, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode < 200 && resp.StatusCode > 299 {
+		return nil, errors.New(resp.Status + ": bad post" + string(rb))
+	}
+
+	log.Println("resp:", string(rb))
+	var r PostHeartbeatResponse
+	err = json.Unmarshal(rb, &r)
+	if err != nil {
+		return nil, err
+	}
+
+	return &r, nil
 }
 
 // UnmarshalJSON unmarshals the Time type
